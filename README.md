@@ -66,7 +66,7 @@ Never put secrets in the Image or git. Set `DATABASE_URL` on Fly (usually via `f
 
 **CodeQL gate:** the analyze job uploads results; GitHub marks the PR **Code scanning** check failed for **error**-severity alerts by default. After the repo exists, enable merge protection / ruleset so unresolved Error (or higher) code-scanning alerts block merge — that is how “CodeQL fails the Pipeline” is enforced (the Action itself does not exit non-zero on findings).
 
-**Fly Migrations:** `release_command = "npm run prisma:migrate"` (`prisma migrate deploy`) on Staging and Production (ADR-0002). Local compose is the only place that migrate-then-starts.
+**Fly Migrations:** `release_command` runs `node ./node_modules/prisma/build/index.js migrate deploy` on Staging and Production (ADR-0002). Local compose is the only place that migrate-then-starts.
 
 ### GitHub secrets / vars
 
