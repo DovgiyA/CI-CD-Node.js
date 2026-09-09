@@ -8,9 +8,16 @@ permissions:
 
 jobs:
   bootstrap:
-    name: Create Production Postgres + Web Service
+    name: Create Production Web Service
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
       - name: Bootstrap on Render
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
@@ -20,40 +27,41 @@ jobs:
           API=https://api.render.com/v1
           AUTH="Authorization: Bearer ${RENDER_API_KEY}"
 
-          # Discover workspace from existing staging service
           STAGING_ID="${{ secrets.RENDER_STAGING_SERVICE_ID }}"
           STAGING=$(curl -sS -H "$AUTH" -H "Accept: application/json" "$API/services/$STAGING_ID")
-          OWNER_ID=$(echo "$STAGING" | jq -r '.ownerId // .service.ownerId')
-          ENV_ID=$(echo "$STAGING" | jq -r '.environmentId // .service.environmentId')
-          REGION=$(echo "$STAGING" | jq -r '.serviceDetails.region // .service.serviceDetails.region // "oregon"')
+          OWNER_ID=$(echo "$STAGING" | jq -r '.ownerId')
+          ENV_ID=$(echo "$STAGING" | jq -r '.environmentId')
+          REGION=$(echo "$STAGING" | jq -r '.serviceDetails.region // "oregon"')
           echo "owner=$OWNER_ID env=$ENV_ID region=$REGION"
 
-          # Reuse production postgres if present
+          # Free tier: only one Free Postgres per workspace. Reuse staging instance with a second database.
           PG_ID=$(curl -sS -H "$AUTH" -H "Accept: application/json" "$API/postgres?limit=50" \
-            | jq -r '.[] | .postgres | select(.name=="items-api-db-production") | .id' | head -1)
-          if [ -z "$PG_ID" ] || [ "$PG_ID" = "null" ]; then
-            echo "Creating Free Postgres items-api-db-production…"
-            PG_RESP=$(curl -sS -X POST "$API/postgres" \
-              -H "$AUTH" -H "Accept: application/json" -H "Content-Type: application/json" \
-              -d "{\"name\":\"items-api-db-production\",\"ownerId\":\"$OWNER_ID\",\"environmentId\":\"$ENV_ID\",\"plan\":\"free\",\"version\":\"18\",\"region\":\"$REGION\"}")
-            PG_ID=$(echo "$PG_RESP" | jq -r '.id // .postgres.id')
-            echo "postgres_id=$PG_ID"
-            # Wait until available
-            for i in $(seq 1 60); do
-              STATUS=$(curl -sS -H "$AUTH" -H "Accept: application/json" "$API/postgres/$PG_ID" | jq -r '.status // .postgres.status')
-              echo "pg_status=$STATUS"
-              [ "$STATUS" = "available" ] && break
-              sleep 5
-            done
-          else
-            echo "Reusing postgres_id=$PG_ID"
-          fi
+            | jq -r '.[] | .postgres | select(.name=="items-api-db-staging") | .id' | head -1)
+          echo "postgres_id=$PG_ID"
+          test -n "$PG_ID" && test "$PG_ID" != "null"
 
           CONN=$(curl -sS -H "$AUTH" -H "Accept: application/json" "$API/postgres/$PG_ID/connection-info")
-          DATABASE_URL=$(echo "$CONN" | jq -r '.internalConnectionString')
-          test -n "$DATABASE_URL" && test "$DATABASE_URL" != "null"
+          EXTERNAL=$(echo "$CONN" | jq -r '.externalConnectionString')
+          INTERNAL=$(echo "$CONN" | jq -r '.internalConnectionString')
+          test -n "$EXTERNAL" && test "$EXTERNAL" != "null"
 
-          # Reuse production web service if present
+          sudo apt-get update -y >/dev/null
+          sudo apt-get install -y postgresql-client >/dev/null
+          if ! psql "$EXTERNAL" -tAc "SELECT 1 FROM pg_database WHERE datname='items_api_db_production'" | grep -q 1; then
+            echo "Creating database items_api_db_production on shared Free Postgres…"
+            psql "$EXTERNAL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE items_api_db_production;'
+          else
+            echo "Database items_api_db_production already exists"
+          fi
+
+          # Replace the database name segment before optional query string
+          rewrite_db() {
+            python3 -c 'import os,re,sys; u=os.environ["U"]; print(re.sub(r"/([^/?]+)(\?|$)", r"/items_api_db_production\2", u, count=1))'
+          }
+          PROD_EXTERNAL=$(U="$EXTERNAL" rewrite_db)
+          PROD_INTERNAL=$(U="$INTERNAL" rewrite_db)
+          echo "prod_db_url_ready"
+
           PROD_ID=$(curl -sS -H "$AUTH" -H "Accept: application/json" "$API/services?limit=50" \
             | jq -r '.[] | .service | select(.name=="items-api-production") | .id' | head -1)
           IMAGE_PATH="docker.io/${DOCKERHUB_USERNAME}/items-api:latest"
@@ -89,22 +97,25 @@ jobs:
             SVC_RESP=$(curl -sS -X POST "$API/services" \
               -H "$AUTH" -H "Accept: application/json" -H "Content-Type: application/json" \
               -d "$SVC_BODY")
-            echo "$SVC_RESP" | jq '{id, name, url: .serviceDetails.url}' || echo "$SVC_RESP"
-            PROD_ID=$(echo "$SVC_RESP" | jq -r '.id // .service.id')
+            echo "$SVC_RESP" | jq '{id, name, url: .serviceDetails.url, message}' 2>/dev/null || echo "$SVC_RESP"
+            PROD_ID=$(echo "$SVC_RESP" | jq -r '.id // empty')
+            if [ -z "$PROD_ID" ]; then
+              echo "Failed to create production service" >&2
+              exit 1
+            fi
           else
             echo "Reusing service_id=$PROD_ID"
           fi
 
-          test -n "$PROD_ID" && test "$PROD_ID" != "null"
-
           curl -sS -X PUT "$API/services/$PROD_ID/env-vars" \
             -H "$AUTH" -H "Accept: application/json" -H "Content-Type: application/json" \
-            -d "[{\"key\":\"NODE_ENV\",\"value\":\"production\"},{\"key\":\"DATABASE_URL\",\"value\":$(echo "$DATABASE_URL" | jq -Rs .)}]" \
-            | jq '[.[] | .envVar.key // .key]' 
+            -d "[{\"key\":\"NODE_ENV\",\"value\":\"production\"},{\"key\":\"DATABASE_URL\",\"value\":$(echo "$PROD_INTERNAL" | jq -Rs .)}]" \
+            | jq '[.[] | (.envVar.key // .key)]'
 
-          URL=$(curl -sS -H "$AUTH" -H "Accept: application/json" "$API/services/$PROD_ID" | jq -r '.serviceDetails.url // .service.serviceDetails.url')
+          echo "Applying Migrations to Production database…"
+          npm ci
+          DATABASE_URL="$PROD_EXTERNAL" npx prisma migrate deploy
 
-          echo "PRODUCTION_SERVICE_ID=$PROD_ID" >> "$GITHUB_STEP_SUMMARY"
-          echo "PRODUCTION_URL=$URL" >> "$GITHUB_STEP_SUMMARY"
-          echo "PRODUCTION_SERVICE_ID=$PROD_ID"
-          echo "PRODUCTION_URL=$URL"
+          URL=$(curl -sS -H "$AUTH" -H "Accept: application/json" "$API/services/$PROD_ID" | jq -r '.serviceDetails.url')
+          echo "PRODUCTION_SERVICE_ID=$PROD_ID" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "PRODUCTION_URL=$URL" | tee -a "$GITHUB_STEP_SUMMARY"
