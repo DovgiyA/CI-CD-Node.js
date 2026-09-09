@@ -2,6 +2,8 @@
 
 Node.js Items API delivered as a production-shaped container: Docker Image → Docker Hub → Fly.io (Staging + Production), with GitHub Actions for checks, publish, scan, and Deploy.
 
+**Repository:** https://github.com/DovgiyA/CI-CD-Node.js
+
 ## What it is
 
 - **Приложение:** Express + Prisma + Postgres + TypeScript
