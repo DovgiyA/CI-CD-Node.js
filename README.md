@@ -74,9 +74,20 @@ Never put secrets in the Image or git. Set `DATABASE_URL` on Fly (usually via `f
 - `DOCKERHUB_TOKEN` — access token (push)
 - `FLY_API_TOKEN` — deploy token
 
+Set them without putting values in git:
+
+```bash
+export DOCKERHUB_USERNAME='…'
+export DOCKERHUB_TOKEN='…'
+export FLY_API_TOKEN='…'
+sh scripts/setup-github-delivery-secrets.sh
+```
+
 ### GitHub Environments
 
 Create **`staging`** and **`production`**. On `production`, enable required reviewers.
+
+This repo is configured with Environments **`staging`** (no reviewers) and **`production`** (required reviewer: repo owner). Admins may still bypass on public repos unless org policy forbids it — keep `prevent_self_review` off for solo homework so you can approve your own Production Deploys.
 
 ### Docker Hub
 
