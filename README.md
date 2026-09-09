@@ -20,6 +20,12 @@ docker compose up --build
 # API: http://localhost:3000/health
 ```
 
+Repeatable smoke (health + create/read Item; asserts `DATABASE_URL` is not baked into the Image):
+
+```bash
+npm run smoke:compose
+```
+
 App-only on the host (Postgres via compose):
 
 ```bash

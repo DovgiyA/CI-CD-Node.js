@@ -17,7 +17,8 @@
     "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",
     "prisma:validate": "DATABASE_URL=${DATABASE_URL:-postgresql://items:items@localhost:5432/items?schema=public} node ./node_modules/prisma/build/index.js validate",
     "prisma:generate": "DATABASE_URL=${DATABASE_URL:-postgresql://items:items@localhost:5432/items?schema=public} node ./node_modules/prisma/build/index.js generate",
-    "prisma:migrate": "node ./node_modules/prisma/build/index.js migrate deploy"
+    "prisma:migrate": "node ./node_modules/prisma/build/index.js migrate deploy",
+    "smoke:compose": "sh ./scripts/compose-smoke.sh"
   },
   "dependencies": {
     "@prisma/client": "^6.15.0",
