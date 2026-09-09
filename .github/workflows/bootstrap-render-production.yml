@@ -97,10 +97,13 @@ jobs:
             SVC_RESP=$(curl -sS -X POST "$API/services" \
               -H "$AUTH" -H "Accept: application/json" -H "Content-Type: application/json" \
               -d "$SVC_BODY")
-            echo "$SVC_RESP" | jq '{id, name, url: .serviceDetails.url, message}' 2>/dev/null || echo "$SVC_RESP"
-            PROD_ID=$(echo "$SVC_RESP" | jq -r '.id // empty')
-            if [ -z "$PROD_ID" ]; then
+            # Create may return the Service directly or wrapped as { service: … }
+            echo "$SVC_RESP" | jq '{id: (.id // .service.id), name: (.name // .service.name), url: (.serviceDetails.url // .service.serviceDetails.url), message}' 2>/dev/null \
+              || echo "$SVC_RESP"
+            PROD_ID=$(echo "$SVC_RESP" | jq -r '.id // .service.id // empty')
+            if [ -z "$PROD_ID" ] || [ "$PROD_ID" = "null" ]; then
               echo "Failed to create production service" >&2
+              echo "$SVC_RESP" >&2
               exit 1
             fi
           else
