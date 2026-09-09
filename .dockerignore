@@ -1,0 +1,17 @@
+node_modules
+dist
+coverage
+.git
+.github
+.env
+.env.*
+!.env.example
+*.md
+docs
+.agents
+skills-lock.json
+CONTEXT.md
+fly.*.toml
+docker-compose*.yml
+.gitignore
+.dockerignore

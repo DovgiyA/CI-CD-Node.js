@@ -1,0 +1,64 @@
+name: Production deploy
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Immutable image tag (sha-…) or digest (sha256:…)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: items-api
+
+jobs:
+  deploy-production:
+    name: Deploy production
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve image reference
+        id: image
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            REF="${{ inputs.image_tag }}"
+          else
+            # Tag release: look up matching commit sha image built from this tag's commit
+            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-12)
+            REF="sha-${SHORT_SHA}"
+          fi
+
+          case "$REF" in
+            sha256:*)
+              IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}@$REF"
+              ;;
+            *)
+              IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:$REF"
+              ;;
+          esac
+
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "Deploying $IMAGE"
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly production
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl deploy \
+            --config fly.production.toml \
+            --image "${{ steps.image.outputs.image }}" \
+            --remote-only
