@@ -1,0 +1,110 @@
+name: Bootstrap Render Production
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    name: Create Production Postgres + Web Service
+    runs-on: ubuntu-latest
+    steps:
+      - name: Bootstrap on Render
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          set -euo pipefail
+          API=https://api.render.com/v1
+          AUTH="Authorization: Bearer ${RENDER_API_KEY}"
+
+          # Discover workspace from existing staging service
+          STAGING_ID="${{ secrets.RENDER_STAGING_SERVICE_ID }}"
+          STAGING=$(curl -sS -H "$AUTH" -H "Accept: application/json" "$API/services/$STAGING_ID")
+          OWNER_ID=$(echo "$STAGING" | jq -r '.ownerId // .service.ownerId')
+          ENV_ID=$(echo "$STAGING" | jq -r '.environmentId // .service.environmentId')
+          REGION=$(echo "$STAGING" | jq -r '.serviceDetails.region // .service.serviceDetails.region // "oregon"')
+          echo "owner=$OWNER_ID env=$ENV_ID region=$REGION"
+
+          # Reuse production postgres if present
+          PG_ID=$(curl -sS -H "$AUTH" -H "Accept: application/json" "$API/postgres?limit=50" \
+            | jq -r '.[] | .postgres | select(.name=="items-api-db-production") | .id' | head -1)
+          if [ -z "$PG_ID" ] || [ "$PG_ID" = "null" ]; then
+            echo "Creating Free Postgres items-api-db-production…"
+            PG_RESP=$(curl -sS -X POST "$API/postgres" \
+              -H "$AUTH" -H "Accept: application/json" -H "Content-Type: application/json" \
+              -d "{\"name\":\"items-api-db-production\",\"ownerId\":\"$OWNER_ID\",\"environmentId\":\"$ENV_ID\",\"plan\":\"free\",\"version\":\"18\",\"region\":\"$REGION\"}")
+            PG_ID=$(echo "$PG_RESP" | jq -r '.id // .postgres.id')
+            echo "postgres_id=$PG_ID"
+            # Wait until available
+            for i in $(seq 1 60); do
+              STATUS=$(curl -sS -H "$AUTH" -H "Accept: application/json" "$API/postgres/$PG_ID" | jq -r '.status // .postgres.status')
+              echo "pg_status=$STATUS"
+              [ "$STATUS" = "available" ] && break
+              sleep 5
+            done
+          else
+            echo "Reusing postgres_id=$PG_ID"
+          fi
+
+          CONN=$(curl -sS -H "$AUTH" -H "Accept: application/json" "$API/postgres/$PG_ID/connection-info")
+          DATABASE_URL=$(echo "$CONN" | jq -r '.internalConnectionString')
+          test -n "$DATABASE_URL" && test "$DATABASE_URL" != "null"
+
+          # Reuse production web service if present
+          PROD_ID=$(curl -sS -H "$AUTH" -H "Accept: application/json" "$API/services?limit=50" \
+            | jq -r '.[] | .service | select(.name=="items-api-production") | .id' | head -1)
+          IMAGE_PATH="docker.io/${DOCKERHUB_USERNAME}/items-api:latest"
+
+          if [ -z "$PROD_ID" ] || [ "$PROD_ID" = "null" ]; then
+            echo "Creating Free Web Service items-api-production…"
+            SVC_BODY=$(jq -n \
+              --arg owner "$OWNER_ID" \
+              --arg env "$ENV_ID" \
+              --arg region "$REGION" \
+              --arg image "$IMAGE_PATH" \
+              '{
+                type: "web_service",
+                name: "items-api-production",
+                ownerId: $owner,
+                environmentId: $env,
+                autoDeploy: "no",
+                image: { ownerId: $owner, imagePath: $image },
+                serviceDetails: {
+                  runtime: "image",
+                  plan: "free",
+                  region: $region,
+                  healthCheckPath: "/health",
+                  preDeployCommand: "node ./node_modules/prisma/build/index.js migrate deploy",
+                  envSpecificDetails: {
+                    dockerCommand: "",
+                    dockerContext: "",
+                    dockerfilePath: "",
+                    preDeployCommand: "node ./node_modules/prisma/build/index.js migrate deploy"
+                  }
+                }
+              }')
+            SVC_RESP=$(curl -sS -X POST "$API/services" \
+              -H "$AUTH" -H "Accept: application/json" -H "Content-Type: application/json" \
+              -d "$SVC_BODY")
+            echo "$SVC_RESP" | jq '{id, name, url: .serviceDetails.url}' || echo "$SVC_RESP"
+            PROD_ID=$(echo "$SVC_RESP" | jq -r '.id // .service.id')
+          else
+            echo "Reusing service_id=$PROD_ID"
+          fi
+
+          test -n "$PROD_ID" && test "$PROD_ID" != "null"
+
+          curl -sS -X PUT "$API/services/$PROD_ID/env-vars" \
+            -H "$AUTH" -H "Accept: application/json" -H "Content-Type: application/json" \
+            -d "[{\"key\":\"NODE_ENV\",\"value\":\"production\"},{\"key\":\"DATABASE_URL\",\"value\":$(echo "$DATABASE_URL" | jq -Rs .)}]" \
+            | jq '[.[] | .envVar.key // .key]' 
+
+          URL=$(curl -sS -H "$AUTH" -H "Accept: application/json" "$API/services/$PROD_ID" | jq -r '.serviceDetails.url // .service.serviceDetails.url')
+
+          echo "PRODUCTION_SERVICE_ID=$PROD_ID" >> "$GITHUB_STEP_SUMMARY"
+          echo "PRODUCTION_URL=$URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "PRODUCTION_SERVICE_ID=$PROD_ID"
+          echo "PRODUCTION_URL=$URL"
