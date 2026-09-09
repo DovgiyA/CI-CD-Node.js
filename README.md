@@ -109,7 +109,9 @@ fly postgres attach items-api-db-production -a items-api-production
 ```
 
 Deploys are driven by Actions (`fly deploy --config fly.*.toml --image …`).  
-Migrations: `release_command = "npm run prisma:migrate"` (see ADR 0002).
+Migrations: `release_command` runs `node ./node_modules/prisma/build/index.js migrate deploy` (see ADR 0002).
+
+> **Fly billing:** creating apps/Postgres requires a payment method on the Fly org. Add a card at the Fly dashboard billing page before the first Staging bootstrap.
 
 ### Rollback (Production)
 

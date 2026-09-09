@@ -28,7 +28,7 @@ services:
         condition: service_healthy
     # Local-only migrate-then-start (ADR-0002 exception). Staging/Production use release_command.
     command: >
-      sh -c "npm run prisma:migrate && node dist/index.js"
+      sh -c "node ./node_modules/prisma/build/index.js migrate deploy && node dist/index.js"
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 5s

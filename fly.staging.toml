@@ -14,7 +14,8 @@ primary_region = "fra"
   PORT = "3000"
 
 [deploy]
-  release_command = "npm run prisma:migrate"
+  # No npm in the Image — call Prisma CLI via node (same as package.json prisma:migrate).
+  release_command = "node ./node_modules/prisma/build/index.js migrate deploy"
 
 [http_service]
   internal_port = 3000

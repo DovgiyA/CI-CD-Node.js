@@ -13,7 +13,7 @@ primary_region = "fra"
   PORT = "3000"
 
 [deploy]
-  release_command = "npm run prisma:migrate"
+  release_command = "node ./node_modules/prisma/build/index.js migrate deploy"
 
 [http_service]
   internal_port = 3000
