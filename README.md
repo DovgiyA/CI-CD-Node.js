@@ -133,11 +133,13 @@ CI Deploys call Render `POST /v1/services/{id}/deploys` with `imageUrl=docker.io
 
 ### Rollback (Production)
 
-1. Find a prior good tag, e.g. `sha-abc123def456`
-2. Actions → **Production deploy** → Run workflow → enter that tag
+Same gated **Production deploy** workflow (not a separate Pipeline).
+
+1. Identify a prior good Image on Docker Hub / a previous Deploy
+2. Actions → **Production deploy** → Run workflow → enter a `sha-…` tag (or `sha256:…` digest; ADR 0003)
 3. Approve the `production` environment
 
-Migrations are **not** rolled back (ADR 0003). Prefer `sha-…` tags (not raw digests) for Render `imageUrl`.
+Migrations are **not** rolled back (`prisma migrate down` is never part of Deploy). For Render `imageUrl`, prefer `sha-…` tags when both are available.
 
 ## Image design
 

@@ -41,10 +41,8 @@ jobs:
 
           case "$REF" in
             sha256:*)
-              # Render imageUrl expects a tag-style registry URL; prefer sha- tags for Rollback.
-              echo "Render Production Rollback should use a sha-… tag, not a raw digest." >&2
-              echo "Got: $REF" >&2
-              exit 1
+              # Registry digest form: repo@sha256:…
+              IMAGE="docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}@$REF"
               ;;
             *)
               IMAGE="docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:$REF"
