@@ -3,7 +3,8 @@
 Node.js Items API delivered as a production-shaped container: Docker Image → Docker Hub → **Render** (Staging + Production), with GitHub Actions for checks, publish, scan, and Deploy.
 
 **Repository:** https://github.com/DovgiyA/CI-CD-Node.js  
-**Staging (Render):** https://items-api-latest.onrender.com
+**Staging (Render):** https://items-api-latest.onrender.com  
+**Production (Render):** https://items-api-production.onrender.com
 
 ## What it is
 

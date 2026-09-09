@@ -11,6 +11,8 @@ We Deploy Images from Docker Hub to **Render** (free web service + free Postgres
 **How CI Deploys:** After publishing `sha-…` to Docker Hub, GitHub Actions calls Render  
 `POST /v1/services/{id}/deploys` with `imageUrl` set to that tag.
 
+**Free-tier Postgres:** Render allows only one Free Postgres per workspace. Staging and Production web services share `items-api-db-staging` and use separate databases (`items_api_db` vs `items_api_db_production`) so environments stay isolated without a second paid instance.
+
 **Rejected for this homework path:** staying on Fly without billing; Railway as primary (trial credits are thinner for always-on Staging + Postgres homework demos).
 
 **Supersedes operational Fly-specific steps** in earlier README; Fly TOML files are removed.
