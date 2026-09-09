@@ -35,30 +35,28 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             REF="${{ inputs.image_tag }}"
           else
-            # Tag release: look up matching commit sha image built from this tag's commit
             SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-12)
             REF="sha-${SHORT_SHA}"
           fi
 
           case "$REF" in
             sha256:*)
-              IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}@$REF"
+              # Render imageUrl expects a tag-style registry URL; prefer sha- tags for Rollback.
+              echo "Render Production Rollback should use a sha-… tag, not a raw digest." >&2
+              echo "Got: $REF" >&2
+              exit 1
               ;;
             *)
-              IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:$REF"
+              IMAGE="docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:$REF"
               ;;
           esac
 
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
           echo "Deploying $IMAGE"
 
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Deploy to Fly production
+      - name: Deploy Image to Render production
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: |
-          flyctl deploy \
-            --config fly.production.toml \
-            --image "${{ steps.image.outputs.image }}" \
-            --remote-only
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          SERVICE_ID: ${{ secrets.RENDER_PRODUCTION_SERVICE_ID }}
+          IMAGE_URL: ${{ steps.image.outputs.image }}
+        run: sh scripts/render-deploy-image.sh
