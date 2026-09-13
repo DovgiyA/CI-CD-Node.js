@@ -10,7 +10,6 @@ coverage
 docs
 .agents
 skills-lock.json
-CONTEXT.md
 fly.*.toml
 docker-compose*.yml
 .gitignore

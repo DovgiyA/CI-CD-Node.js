@@ -11,7 +11,6 @@ Node.js Items API delivered as a production-shaped container: Docker Image → D
 - **Приложение:** Express + Prisma + Postgres + TypeScript
 - **Item:** `id`, `title`, `createdAt`
 - **API:** `GET/POST /items`, `GET/PATCH/DELETE /items/:id`, `GET /health`
-- Domain language: see [`CONTEXT.md`](./CONTEXT.md)
 
 ## Quick start (local)
 
