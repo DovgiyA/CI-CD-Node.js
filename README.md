@@ -1,35 +1,41 @@
 # items-api
 
-Node.js API для работы с Items в production-образе: Docker Image → Docker Hub → **Render** (Staging + Production), с GitHub Actions для проверок, публикации, сканирования и Deploy.
+Небольшое веб‑приложение: список записей (items) с проверкой «сервис жив».
 
-**Репозиторий:** https://github.com/DovgiyA/CI-CD-Node.js  
-**Staging (Render):** https://items-api-latest.onrender.com  
-**Production (Render):** https://items-api-production.onrender.com
+Код проверяется в GitHub, упаковывается в контейнер, кладётся на Docker Hub и выкладывается на [Render](https://render.com): сначала тестовый адрес, потом боевой.
 
-## Что это
+**Код:** https://github.com/DovgiyA/CI-CD-Node.js  
+**Тестовый адрес:** https://items-api-latest.onrender.com  
+**Боевой адрес:** https://items-api-production.onrender.com
 
-- **Приложение:** Express + Prisma + Postgres + TypeScript
-- **Item:** `id`, `title`, `createdAt`
-- **API:** `GET/POST /items`, `GET/PATCH/DELETE /items/:id`, `GET /health`
+## Возможности
 
-## Быстрый старт (локально)
+- Создать, прочитать, изменить и удалить запись
+- Поля записи: `id`, `title`, `createdAt`
+- Адреса: `/items`, `/items/:id`, `/health`
+- Стек: Node.js, Express, TypeScript, Postgres, Prisma
 
-> Если каталог репозитория содержит `:` в имени, на macOS/Linux ломается `PATH` у npm. Скрипты в `package.json` вызывают бинарники через `node ./node_modules/...`, поэтому локальные команды всё равно работают; лучше переименовать папку (например, в `CI-CD-node`).
+## Запуск на своём компьютере
+
+> Если в имени папки есть символ `:`, некоторые команды npm на Mac/Linux могут сбоить. Лучше переименовать папку, например в `CI-CD-node`. В этом проекте скрипты уже обходят проблему.
+
+Скопируйте настройки, поставьте зависимости и поднимите всё через Docker:
 
 ```bash
 cp .env.example .env
 npm ci
 docker compose up --build
-# API: http://localhost:3000/health
 ```
 
-Повторяемый smoke (health + создание/чтение Item; проверяет, что `DATABASE_URL` не зашит в Image):
+Проверка: откройте http://localhost:3000/health
+
+Автопроверка (здоровье сервиса + создание и чтение записи; убеждается, что пароль к базе не зашит в контейнер):
 
 ```bash
 npm run smoke:compose
 ```
 
-Только приложение на хосте (Postgres через compose):
+Вариант без полного Docker‑стека (база в Docker, приложение на компьютере):
 
 ```bash
 docker compose up -d db
@@ -38,7 +44,7 @@ npx prisma migrate deploy
 npm run dev
 ```
 
-## Проверки
+## Локальные проверки перед пушем
 
 ```bash
 npm run lint
@@ -47,116 +53,119 @@ npm test
 npm run build
 ```
 
-## Переменные окружения
+## Настройки приложения
 
-| Переменная     | Обязательна | Примечание                                      |
-|----------------|-------------|-------------------------------------------------|
-| `PORT`         | нет         | По умолчанию `3000`; Render подставляет свой    |
-| `DATABASE_URL` | да          | Строка подключения к Postgres                   |
-| `NODE_ENV`     | нет         | `production` в Image / на Render                |
+| Имя | Нужна ли | Зачем |
+|-----|----------|--------|
+| `PORT` | нет | Порт. По умолчанию `3000`. На Render задаётся сам |
+| `DATABASE_URL` | да | Подключение к Postgres |
+| `NODE_ENV` | нет | Обычно `production` на сервере |
 
-Секреты не кладите в Image и не коммитьте в git. `DATABASE_URL` задайте на Render (привязка Free Postgres).
+Пароли и ключи не кладите в контейнер и не коммитьте в git. Строку к базе задайте в панели Render.
 
-## CI/CD
+## Как устроена выкладка
 
-| Триггер | Что происходит |
-|---------|----------------|
-| PR / push (не `main`) | ESLint, Vitest, `tsc`, проверка Prisma, CodeQL |
-| Push в `main` | Те же проверки + `npm audit` (critical) → сборка Image → **Trivy CRITICAL** → push `sha-<commit>` + `latest` в Docker Hub → Deploy **Staging** на Render |
-| Тег `v*` или `workflow_dispatch` | Deploy **Production** (одобрение GitHub Environment) на закреплённый Image на Render |
+| Когда | Что происходит |
+|-------|----------------|
+| Пуш или PR **не** в ветку `main` | Проверки кода (стиль, тесты, типы, Prisma, CodeQL). Контейнер **не** публикуется |
+| Пуш в `main` | Те же проверки → проверка зависимостей → сборка контейнера → проверка безопасности (Trivy) → загрузка на Docker Hub → обновление **тестового** адреса на Render |
+| Тег `v…` или ручной запуск workflow | Выкладка на **боевой** адрес. Нужно подтверждение человека в GitHub |
 
-**Шлюз CodeQL:** job анализа загружает результаты; GitHub помечает check **Code scanning** как failed для алертов уровня **error** и выше. После создания репозитория включите защиту merge / ruleset, чтобы нерешённые Error (и выше) блокировали merge — так «CodeQL валит Pipeline» на практике (сам Action не завершается с ненулевым кодом из‑за находок).
+### CodeQL
 
-**Миграции:** Render **pre-deploy command** запускает `node ./node_modules/prisma/build/index.js migrate deploy`. Локальный compose — единственное место, где migrate идёт сразу перед стартом процесса.
+Результаты уходят в GitHub. Чтобы «опасные» находки реально блокировали слияние PR, в настройках репозитория включите защиту ветки / правило для Code scanning. Сам шаг Actions из‑за находок с кодом ошибки не падает.
 
-### Секреты GitHub
+### Обновление схемы базы
 
-- `DOCKERHUB_USERNAME` — пользователь Docker Hub
-- `DOCKERHUB_TOKEN` — access token (для push)
-- `RENDER_API_KEY` — API-ключ Render
-- `RENDER_STAGING_SERVICE_ID` — id Staging web service (`srv-…`)
-- `RENDER_PRODUCTION_SERVICE_ID` — id Production web service (`srv-…`)
+На Render перед стартом новой версии выполняется:
 
-Секреты Docker Hub:
+```text
+node ./node_modules/prisma/build/index.js migrate deploy
+```
+
+Локально в `docker compose` миграции тоже применяются при старте сервиса приложения. На сервере это делает команда перед выкладкой, а не сам процесс приложения при каждом запуске.
+
+### Секреты в GitHub
+
+Нужны для публикации контейнера и выкладки:
+
+| Секрет | Смысл |
+|--------|--------|
+| `DOCKERHUB_USERNAME` | Логин Docker Hub |
+| `DOCKERHUB_TOKEN` | Токен для загрузки образов |
+| `RENDER_API_KEY` | Ключ API Render |
+| `RENDER_STAGING_SERVICE_ID` | Id тестового сервиса (`srv-…`) |
+| `RENDER_PRODUCTION_SERVICE_ID` | Id боевого сервиса (`srv-…`) |
+
+Docker Hub:
 
 ```bash
 export DOCKERHUB_USERNAME='…'
 export DOCKERHUB_TOKEN='…'
-# FLY_API_TOKEN больше не используется — удалите его из GitHub, если ещё есть
 sh scripts/setup-github-delivery-secrets.sh
 ```
 
-Секреты Render (после bootstrap ниже):
+Render (когда сервисы уже созданы):
 
 ```bash
 export RENDER_API_KEY='rnd_…'
 export RENDER_STAGING_SERVICE_ID='srv-…'
-# export RENDER_PRODUCTION_SERVICE_ID='srv-…'  # когда появится Production
+# export RENDER_PRODUCTION_SERVICE_ID='srv-…'
 sh scripts/setup-render-secrets.sh
 ```
 
-### GitHub Environments
+В GitHub заведены окружения `staging` и `production`. Для `production` требуется одобрение владельца репозитория.
 
-Окружения **`staging`** и **`production`** (у production обязательный reviewer — владелец репозитория).
+Образы лежат публично: `ваш_логин/items-api`.  
+Метки: `sha-…` (конкретная версия) и `latest` (только с ветки `main`).
 
-### Docker Hub
+## Один раз настроить Render (бесплатный тариф, карта не нужна)
 
-Публичный репозиторий: `DOCKERHUB_USERNAME/items-api`  
-Теги: `sha-<12-символьный-sha>` (неизменяемый), `latest` (только с `main`).
-
-## Настройка Render (один раз, free — без карты)
-
-1. Зарегистрируйтесь на [render.com](https://render.com) (можно через GitHub).
-2. **New → Postgres** → Free → имя, например `items-api-db-staging`.
-3. **New → Web Service** → **Deploy an existing image from a registry**:
-   - Image URL: `docker.io/adolgov321/items-api:latest` (подставьте своего пользователя Hub)
-   - Instance: **Free**
-   - Health check path: `/health`
-4. **Environment**:
-   - Добавьте `NODE_ENV=production`
-   - Добавьте `DATABASE_URL` из Postgres (или «Link database»)
-5. **Pre-Deploy Command:**
+1. Зарегистрируйтесь на [render.com](https://render.com).
+2. Создайте бесплатную Postgres (например `items-api-db-staging`).
+3. Создайте Web Service из готового образа с реестра:
+   - URL образа: `docker.io/adolgov321/items-api:latest` (подставьте свой логин)
+   - тариф Free
+   - путь проверки здоровья: `/health`
+4. В переменных сервиса задайте `NODE_ENV=production` и `DATABASE_URL` (или привяжите базу в интерфейсе).
+5. В **Pre-Deploy Command** укажите:
    ```text
    node ./node_modules/prisma/build/index.js migrate deploy
    ```
-6. Один раз задеплойте из дашборда (подтянет `latest`).
-7. Account → API Keys → создайте ключ.  
-   Service → Settings → скопируйте **Service ID** (`srv-…`).
-8. Запишите секреты в GitHub через `scripts/setup-render-secrets.sh`.
+6. Один раз запустите выкладку из панели Render.
+7. Создайте API‑ключ в аккаунте и скопируйте Service ID сервиса.
+8. Запишите секреты в GitHub скриптом `scripts/setup-render-secrets.sh`.
 
-Для Production повторите шаги 2–6 (отдельное имя БД / отдельный web service) или используйте `.github/workflows/bootstrap-render-production.yml`.
+Боевой сервис делается так же отдельно (своя база / свой сервис) или через workflow `.github/workflows/bootstrap-render-production.yml`.
 
-CI вызывает Render `POST /v1/services/{id}/deploys` с `imageUrl=docker.io/…/items-api:sha-…`.
+Дальше GitHub сам просит Render выложить нужную версию контейнера.
 
-> Free web service засыпает без трафика; первый запрос может занять ~1 минуту. Free Postgres живёт 30 дней — для учебки нормально.
+> На бесплатном тарифе сервис засыпает без запросов — первый ответ может идти около минуты. Бесплатная Postgres живёт 30 дней — для учёбы достаточно.
 
-### Rollback (Production)
+### Откат боевой версии
 
-Тот же gated-workflow **Production deploy** — отдельный Pipeline не нужен.
+Отдельный процесс не нужен — снова запускаете **Production deploy**:
 
-1. Найдите предыдущий хороший Image на Docker Hub / в прошлых Deploy
-2. Actions → **Production deploy** → Run workflow → укажите тег `sha-…` (или digest `sha256:…`)
-3. Одобрите Environment `production`
+1. Найдите прошлую рабочую метку образа (`sha-…`) на Docker Hub или в истории выкладок.
+2. Actions → **Production deploy** → Run workflow → введите эту метку.
+3. Подтвердите окружение `production`.
 
-Миграции **не** откатываются (`prisma migrate down` никогда не входит в Deploy). Для Render `imageUrl` предпочтительнее теги `sha-…`, если есть и тег, и digest.
+Схему базы назад **не** откатываем. Меняется только контейнер приложения. Удобнее указывать метку `sha-…`, а не «сырой» digest.
 
-## Устройство Image
+## Как собран контейнер
 
-- Multi-stage сборка, Node 22 bookworm-slim
-- `npm ci` + `prisma generate` + `tsc`; в runtime — `npm prune --omit=dev`
-- npm/npx убраны из финального Image (меньше размер и поверхность для Trivy)
-- Пользователь без root (`nodejs`, uid 1001)
-- `NODE_ENV=production`, слушает `0.0.0.0:$PORT`
+- Сборка в несколько этапов, Node.js 22
+- В финальном образе нет npm/npx (меньше размер и меньше замечаний сканера)
+- Процесс идёт не от root
+- Слушает адрес `0.0.0.0` и порт из `$PORT`
 
-## Вне скоупа
+## Чего в проекте намеренно нет
 
-Явно не входит в этот репозиторий:
-
-- Kubernetes / своя кластерная оркестрация
-- Terraform / полный IaC сверх Actions и API/дашборда хоста
-- APM, метрики, алерты, on-call
-- Canary / blue-green по проценту трафика
-- Multi-region / самостоятельно управляемый HA Postgres
-- CDN, WAF, edge rate limiting
-- Внешние secret managers (Vault и т.п.) сверх GitHub + Render
+- Kubernetes и свой кластер
+- Terraform «на всё»
+- Полноценный мониторинг и дежурства
+- Постепенный canary / blue‑green по проценту трафика
+- Несколько регионов и свой отказоустойчивый Postgres
+- CDN, WAF, ограничение запросов на краю
+- Отдельные хранилища секретов вроде Vault (кроме GitHub и Render)
 - Fly.io
