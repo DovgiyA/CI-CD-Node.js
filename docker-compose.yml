@@ -26,7 +26,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    # Local-only migrate-then-start (ADR-0002 exception). Staging/Production use release_command.
+    # Local-only migrate-then-start. Staging/Production use Render pre-deploy.
     command: >
       sh -c "node ./node_modules/prisma/build/index.js migrate deploy && node dist/index.js"
     healthcheck:

@@ -67,7 +67,7 @@ Never put secrets in the Image or git. Set `DATABASE_URL` on Render (link from F
 
 **CodeQL gate:** the analyze job uploads results; GitHub marks the PR **Code scanning** check failed for **error**-severity alerts by default. After the repo exists, enable merge protection / ruleset so unresolved Error (or higher) code-scanning alerts block merge — that is how “CodeQL fails the Pipeline” is enforced (the Action itself does not exit non-zero on findings).
 
-**Migrations:** Render **pre-deploy command** runs `node ./node_modules/prisma/build/index.js migrate deploy` (ADR-0002 intent; ADR-0004 host). Local compose is the only place that migrate-then-starts.
+**Migrations:** Render **pre-deploy command** runs `node ./node_modules/prisma/build/index.js migrate deploy`. Local compose is the only place that migrate-then-starts.
 
 ### GitHub secrets / vars
 
@@ -126,7 +126,7 @@ Tags: `sha-<12-char-sha>` (immutable), `latest` (only from `main`).
 
 Repeat steps 2–6 for Production (separate database name / separate web service), or use `.github/workflows/bootstrap-render-production.yml`.
 
-CI Deploys call Render `POST /v1/services/{id}/deploys` with `imageUrl=docker.io/…/items-api:sha-…` (see ADR 0004).
+CI Deploys call Render `POST /v1/services/{id}/deploys` with `imageUrl=docker.io/…/items-api:sha-…`.
 
 > Free web services sleep after idle; first request may take ~1 minute. Free Postgres expires after 30 days — fine for homework.
 
@@ -135,7 +135,7 @@ CI Deploys call Render `POST /v1/services/{id}/deploys` with `imageUrl=docker.io
 Same gated **Production deploy** workflow (not a separate Pipeline).
 
 1. Identify a prior good Image on Docker Hub / a previous Deploy
-2. Actions → **Production deploy** → Run workflow → enter a `sha-…` tag (or `sha256:…` digest; ADR 0003)
+2. Actions → **Production deploy** → Run workflow → enter a `sha-…` tag (or `sha256:…` digest)
 3. Approve the `production` environment
 
 Migrations are **not** rolled back (`prisma migrate down` is never part of Deploy). For Render `imageUrl`, prefer `sha-…` tags when both are available.
@@ -159,11 +159,4 @@ Explicitly out of scope for this repository:
 - Multi-region / self-managed HA Postgres
 - CDN, WAF, edge rate limiting
 - External secret managers (Vault, etc.) beyond GitHub + Render
-- Fly.io (superseded by ADR 0004)
-
-## ADRs
-
-- [0001 — Public Docker Hub](./docs/adr/0001-public-docker-hub.md)
-- [0002 — release_command / pre-deploy Migrations](./docs/adr/0002-fly-release-command-migrations.md)
-- [0003 — Rollback & forward-only Migrations](./docs/adr/0003-rollback-forward-only-migrations.md)
-- [0004 — Render instead of Fly.io](./docs/adr/0004-render-instead-of-fly.md)
+- Fly.io
