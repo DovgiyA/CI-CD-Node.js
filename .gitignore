@@ -6,4 +6,9 @@ coverage/
 !.env.example
 *.log
 .DS_Store
+
+# Local agent / planning artifacts (not part of the delivery)
 .scratch/
+.agents/
+skills-lock.json
+AGENTS.md

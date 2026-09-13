@@ -76,14 +76,14 @@ Never put secrets in the Image or git. Set `DATABASE_URL` on Render (link from F
 - `DOCKERHUB_TOKEN` — access token (push)
 - `RENDER_API_KEY` — Render API key
 - `RENDER_STAGING_SERVICE_ID` — Staging web service id (`srv-…`)
-- `RENDER_PRODUCTION_SERVICE_ID` — Production web service id (ticket 07+)
+- `RENDER_PRODUCTION_SERVICE_ID` — Production web service id (`srv-…`)
 
 Docker Hub secrets:
 
 ```bash
 export DOCKERHUB_USERNAME='…'
 export DOCKERHUB_TOKEN='…'
-# FLY_API_TOKEN no longer used — keep or delete on GitHub
+# FLY_API_TOKEN is unused — delete it from GitHub if still present
 sh scripts/setup-github-delivery-secrets.sh
 ```
 
@@ -125,7 +125,7 @@ Tags: `sha-<12-char-sha>` (immutable), `latest` (only from `main`).
    Service → Settings → copy **Service ID** (`srv-…`).
 8. Set GitHub secrets via `scripts/setup-render-secrets.sh`.
 
-Repeat steps 2–6 for Production (`items-api-db-production` / separate web service) when doing ticket 07.
+Repeat steps 2–6 for Production (separate database name / separate web service), or use `.github/workflows/bootstrap-render-production.yml`.
 
 CI Deploys call Render `POST /v1/services/{id}/deploys` with `imageUrl=docker.io/…/items-api:sha-…` (see ADR 0004).
 
